@@ -1,0 +1,221 @@
+# Scheme
+
+;; Sulav Nakarmi (sulavn@brandeis.edu) 2014-02-05
+;; SCIP - Ex 1.17
+;; this is the code for problem set -- Lunar Lander
+#lang racket
+(define (update ship-state fuel-burn-rate)
+  (make-ship-state
+   (+ (height ship-state) (* (velocity ship-state) dt)) ; height
+   (+ (velocity ship-state)
+      (* (- (* engine-strength fuel-burn-rate) gravity)
+         dt))                                           ; velocity
+   (- (fuel ship-state) (* fuel-burn-rate dt))))        ; fuel
+  
+(define (lander-loop ship-state)
+  (show-ship-state ship-state)
+  (if (landed? ship-state)
+      (end-game ship-state)
+      (lander-loop (update ship-state (get-burn-rate)))))
+
+(define (show-ship-state ship-state)
+  (write-line 
+    (list 'height (height ship-state)
+          'velocity (velocity ship-state)
+          'fuel (fuel ship-state))))
+
+(define (landed? ship-state)
+  (<= (height ship-state) 0))
+
+(define (end-game ship-state)
+  (let ((final-velocity (velocity ship-state)))
+       (write-line final-velocity)
+       (cond ((>= final-velocity safe-velocity)
+               (write-line "good landing")
+               'game-over)
+             (else
+               (write-line "you crashed!")
+               'game-over))))
+
+(define (get-burn-rate)
+  (if (= (player-input) burn-key)
+      1
+      0))
+
+(define (play) (lander-loop (initial-ship-state)))
+
+(define (initial-ship-state)
+  (make-ship-state 50       ; 50 km high
+                   0        ; not moving (0 km/sec)
+                   20))     ; 20 kg of fuel left
+
+(define dt 1)               ; 1 second interval of simulation
+  
+(define gravity 0.5)        ; 0.5 km/sec/sec
+  
+(define safe-velocity -0.5) ; 0.5 km/sec or faster is a crash
+
+(define engine-strength 1)  ; 1 kilonewton-second
+
+(define (player-input) 
+  (char->integer (prompt-for-command-char " action: "))) 
+
+(define burn-key 32)   ;space key
+
+; You'll learn about the stuff below here in Chapter 2.
+; For now, think of make-ship-state, height, velocity, and fuel
+; as primitive procedures built in to Scheme.
+
+(define (make-ship-state height velocity fuel)
+  (list 'HEIGHT   height
+        'VELOCITY velocity
+        'FUEL     fuel))
+
+(define (height state) (second state))
+(define (velocity state) (fourth state))
+(define (fuel state) (sixth state))
+
+(define (second l) (cadr l))
+(define (fourth l) (cadr (cddr l)))
+(define (sixth l) (cadr (cddr (cddr l))))
+
+; Users of DrScheme or DrRacket: add these for compatibility with MIT Scheme...
+
+; for input and output
+
+(define (write-line x)
+  (display x)
+  (newline))
+
+(define (get-one-key)
+  (let ((x (read-char)))
+    (if (eq? x #\newline)
+        x
+        (empty-buffer x))))
+
+(define (empty-buffer x)
+  (if (eq? (read-char) #\newline)
+      x
+      (empty-buffer x)))
+
+(define (prompt-for-command-char prompt)
+  (display prompt)
+  (get-one-key)) 
+
+; for random number generation
+
+(#%require (only racket/base random))
+
+; a ridiculous addendum  (you'll need this for the exercises)
+
+(define (1+ x) (+ 1 x))
+
+;;; HERE STARTS MY CODE
+;;; Problem 1
+;; Adds a constraint that makes it so the rate at which fuel can be burned cannot be less than than the total number of gallons.
+(define (update ship-state fuel-burn-rate)
+  (if (< (/ (fuel ship-state) dt) 1)
+  (/ (full-burn ship-state) dt)  
+  (make-ship-state
+   (+ (height ship-state) (* (velocity ship-state) dt)) ; height
+   (+ (velocity ship-state)
+      (* (- (* engine-strength fuel-burn-rate) gravity)
+         dt))                                           ; velocity
+   (- (fuel ship-state) (* fuel-burn-rate dt)))))       ; fuel
+
+;;; Problem 2
+;; Modifies play so that a strategy can be employed to land the ship.
+(define (full-burn ship-state) 1) 
+
+(define (no-burn ship-state) 0)
+
+(define (ask-user ship-state) (get-burn-rate))
+
+(define (lander-loop ship-state strategy)
+  (show-ship-state ship-state) 
+  (if (landed? ship-state)
+   (end-game ship-state)
+    (lander-loop (update ship-state (strategy ship-state)) strategy )))
+
+(define (play strategy) (lander-loop (initial-ship-state) strategy ))
+
+;;; Problem 3
+;; Adds a strategy which employs either of the two strategies randomly.
+(define (random-choice strategy1 strategy2)
+  (lambda (ship-state) 
+    (if (= (random 2) 0) 
+        (strategy1 ship-state)
+        (strategy2 ship-state))))
+
+;;; Problem 4
+;; Adds a strategy which chooses based on height, a strategy out of two given ones.
+(define (height-choice strategy1 strategy2 height2)
+  (lambda (ship-state)
+  (if (>= (height ship-state) height2)
+      (strategy1 ship-state)
+      (strategy2 ship-state))))
+
+;;; Problem 5 
+;; Adds a strategy similar to the the strategy in Problem 4, with the freedom to choose which predicate to be used instead of height.
+(define (random-choice strategy-1 strategy-2)                       ;randomly chooses between 2 strats
+  (choice strategy-1
+          strategy-2
+          (lambda (ship-state) 
+            (= (random 2) 0))))
+
+(define (choice strategy1 strategy2 predicate)
+    (lambda (ship-state)      
+       (if (predicate ship-state)                                   ;returns a procedure based on a predicate
+	   (strategy1 ship-state)
+	   (strategy2 ship-state))))
+
+(define (height-choice strategy1 strategy2 height2) 
+  (choice strategy1                                                 ;depending on height chooses strat 1 or 2
+	  strategy2
+          (lambda (ship-state) (>= (height ship-state) height2))))
+
+;;; Problem 6
+;; Adds another strategy that randomly asks the user which strategy to use or uses strategy fullburn if the height is below 40.
+(define (strategy3)
+  (height-choice no-burn (random-choice full-burn ask-user) 40))
+
+;;; Problem 7
+
+; This can be shown using the formula vf^2 = vo^2 + 2 * a * ( hf - ho ). 
+; Assuming the ground is 0 hf and vf = 0, the equation now becomes 
+; 0 = vo^2 + 2 * a * -ho 
+; = 2 * a * ho = vo^2
+; = a = vo^2 / ( 2 * ho)
+;;; Problem 8
+;; Adds the strat that if the acceleration for the ship is always vo^2 / ( 2 * ho), then it will land with vf = 0 as shown in Problem 7.
+(define (square x)
+  (* x x))
+  
+(define constant-acc
+  (lambda (ship-state)
+    (+ (/ (square (velocity ship-state)) (* 2 (height ship-state))) gravity))) ;formula for acceleration 
+
+;;; Problem 9
+
+; Height of 20 = 13.079125960250124 fuel remaining (but crashes) while Height of 30 = 10.68134522276128 fuel remaining. 
+
+;;; Problem 10 
+;; Modifies update so that the burn rate cannot be greater than 1. 
+(define (update ship-state fuel-burn-rate)
+   (let ((limited-burn-rate (min fuel-burn-rate 1)))  
+  (make-ship-state
+   (+ (height ship-state) (* (velocity ship-state) dt)) ; height
+   (+ (velocity ship-state)
+      (* (- (* engine-strength limited-burn-rate) gravity)
+         dt))                                           ; velocity
+   (- (fuel ship-state) (* limited-burn-rate dt)))))       ; fuel
+
+;;; Problem 11 
+;; Adds a strategy where the ship is left to fall so that it has starting velocity to employ the strategy specified in Problem 8.
+(define optimal-constant-acc
+  (lambda (ship-state)
+    (if (<= (constant-acc ship-state) 0.8)
+        (no-burn ship-state)
+        (constant-acc ship-state))))
+
+; Had 9.732359804813962 fuel left and successfully landed.
